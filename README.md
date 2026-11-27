@@ -22,6 +22,13 @@ RESEARCHIQ is an interactive, visualization-driven academic research intelligenc
   - Guided 12-stage pipeline with approval gates, live RAG evidence drawer, Mermaid architecture editor/export, real CSV/Excel experimental analysis (zero fabricated numbers), 12-section manuscript editor, validation health dashboard, and **IEEE / Springer / ACM** exports (**DOCX, PDF, LaTeX, BibTeX**).
 - **Portable `.riq` Project Archives (Zero Login / Zero Permanent DB)**:
   - Export complete workspaces (manifest, PDFs, datasets, diagrams, manuscript sections, approval states) to `.riq` ZIP archives, import with strict path-traversal validation, isolate multiple session projects, and auto-backup within session temporary storage.
+- **RESEARCHIQ 2.0 — Intelligence Hub (`research_os/`)**:
+  - **Unified Research Knowledge Graph**: Multi-entity graph connecting papers, authors, problems, objectives, methods, algorithms, datasets, metrics, gaps, findings, and limitations (`Source Evidence` vs `AI-Inferred`).
+  - **Evidence & Contradiction Intelligence**: Page-traceable evidence registry and context-checked cross-paper contradiction analysis.
+  - **Landscape Map & Gap Validation Engine**: Filterable domain analytics and 10-dimension gap validation reports.
+  - **Problem Architect & Methodology Architect**: Candidate problem comparison and grounded algorithm/dataset/baseline recommendations.
+  - **Experiment Planning & Analysis Engine**: Explicit `Planned`/`Completed`/`Simulated Example`/`Actual Measured` tracking, pure-NumPy ROC/PR curves, 95% CIs, and misclassified error inspection.
+  - **Manuscript & Reproducibility Intelligence + Publication Strategy + LangGraph Workflow Assistant**: Writing quality diagnostics, 10-point completeness, 8-criterion reproducibility audit, OpenAlex venue suitability, and contextual project Q&A.
 
 ## Quickstart
 

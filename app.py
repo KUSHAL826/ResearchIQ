@@ -15,6 +15,7 @@ from core.vector_store import SessionVectorStore
 from frontend.animation import inject_theme_css
 from frontend.dashboard import render_dashboard
 from frontend.paper_studio import render_paper_studio
+from frontend.research_os_view import render_research_os_hub
 from frontend.research_workspace import render_research_workspace
 from frontend.sidebar import render_sidebar
 
@@ -66,6 +67,8 @@ def main() -> None:
         render_dashboard(projects, active_project, vector_stores, assets_cache)
     elif nav == "Workspace A — Research Intelligence":
         render_research_workspace(active_project, vector_stores[active_id], assets_cache[active_id])
+    elif nav == "Research OS 2.0 — Intelligence Hub":
+        render_research_os_hub(active_project, vector_stores[active_id], assets_cache[active_id])
     else:
         render_paper_studio(active_project, vector_stores[active_id], assets_cache[active_id])
 

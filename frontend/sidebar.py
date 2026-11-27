@@ -44,6 +44,7 @@ def render_sidebar(
             "Command Dashboard",
             "Workspace A — Research Intelligence",
             "Workspace B — Paper Studio",
+            "Research OS 2.0 — Intelligence Hub",
         ]
         current_nav = st.session_state.get("active_nav", nav_options[0])
         if current_nav not in nav_options:

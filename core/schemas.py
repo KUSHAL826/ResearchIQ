@@ -400,6 +400,127 @@ class PublicationPrepState(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# RESEARCHIQ 2.0 — Advanced Intelligence Layer Schemas (Additive & Backward-Compatible)
+# ---------------------------------------------------------------------------
+
+class EvidenceItem(BaseModel):
+    evidence_id: str = Field(default_factory=lambda: f"ev_{uuid4().hex[:6]}")
+    statement: str
+    source_paper: str = ""
+    paper_id: str = ""
+    page_number: str = "N/A"
+    section: str = ""
+    passage: str = ""
+    retrieval_score: float = 0.0
+    classification: Literal[
+        "Direct evidence",
+        "Supporting evidence",
+        "Contradictory evidence",
+        "Indirect evidence",
+        "Insufficient evidence",
+    ] = "Supporting evidence"
+
+
+class ContradictionAnalysisItem(BaseModel):
+    topic: str
+    paper_a: str
+    claim_a: str
+    context_a: str = ""
+    paper_b: str
+    claim_b: str
+    context_b: str = ""
+    contradiction_type: Literal[
+        "Conflicting results",
+        "Experimental conclusion",
+        "Methodology assumption",
+        "Dataset-dependent",
+        "Author claim",
+    ] = "Dataset-dependent"
+    explanation: str = ""
+    context_checked: bool = True
+
+
+class GapValidationReport(BaseModel):
+    gap_id: str
+    gap_title: str
+    classification: Literal["explicit", "inferred"] = "explicit"
+    supporting_literature: list[str] = Field(default_factory=list)
+    evidence_passages: list[str] = Field(default_factory=list)
+    related_papers: list[str] = Field(default_factory=list)
+    existing_approaches: list[str] = Field(default_factory=list)
+    reasoning: str = ""
+    potential_contribution: str = ""
+    technical_feasibility: str = "Medium"
+    complexity: str = "Moderate"
+    required_datasets: list[str] = Field(default_factory=list)
+    evaluation_possibilities: list[str] = Field(default_factory=list)
+    uncertainties: list[str] = Field(default_factory=list)
+    further_searches_required: list[str] = Field(default_factory=list)
+
+
+class ProblemCandidate(BaseModel):
+    candidate_id: str = Field(default_factory=lambda: f"pc_{uuid4().hex[:6]}")
+    title: str
+    problem_statement: str
+    supporting_papers: list[str] = Field(default_factory=list)
+    existing_solutions: list[str] = Field(default_factory=list)
+    identified_limitations: list[str] = Field(default_factory=list)
+    potential_contribution: str = ""
+    research_questions: list[str] = Field(default_factory=list)
+    objectives: list[str] = Field(default_factory=list)
+    required_resources: list[str] = Field(default_factory=list)
+    suggested_methodology: str = ""
+    evaluation_strategy: str = ""
+    feasibility_score: float = 7.0
+    contribution_score: float = 7.5
+
+
+class MethodologyRecommendation(BaseModel):
+    method_name: str
+    suitability_reason: str
+    problem_addressed: str
+    assumptions: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    evaluation_plan: str = ""
+    recommended_datasets: list[str] = Field(default_factory=list)
+    recommended_metrics: list[str] = Field(default_factory=list)
+    baselines: list[str] = Field(default_factory=list)
+
+
+class ExperimentRecord(BaseModel):
+    exp_id: str = Field(default_factory=lambda: f"exp_{uuid4().hex[:6]}")
+    name: str
+    status: Literal["Planned", "Completed", "Simulated Example", "Actual Measured"] = "Planned"
+    configuration: str = ""
+    notes: str = ""
+
+
+class ReproducibilityItem(BaseModel):
+    criterion: str
+    status: Literal["Reported", "Partial", "Missing"] = "Missing"
+    evidence: str = ""
+    recommendation: str = ""
+
+
+class ReproducibilityCheckReport(BaseModel):
+    items: list[ReproducibilityItem] = Field(default_factory=list)
+    score: float = 0.0
+    checked_at: str = Field(default_factory=utc_now_iso)
+
+
+class PublicationSuitabilityItem(BaseModel):
+    venue_name: str
+    publisher_or_type: str = ""
+    scope_match: str = ""
+    indexing_note: str = "Verify indexing directly on publisher website"
+    submission_format: str = "PDF / LaTeX / DOCX (verify on venue site)"
+    word_or_page_limit: str = "Verify on official Call for Papers"
+    deadlines_note: str = "Check official venue calendar"
+    verification_required: bool = True
+    homepage: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Root Portable Project Model (.riq archive manifest)
 # ---------------------------------------------------------------------------
 
@@ -453,3 +574,14 @@ class ResearchProject(BaseModel):
     # Exported diagrams/SVG/Mermaid registry
     saved_diagrams: dict[str, str] = Field(default_factory=dict)
     processing_log: list[dict[str, str]] = Field(default_factory=list)
+
+    # RESEARCHIQ 2.0 Intelligence Layer State (optional, defaults preserve .riq compatibility)
+    evidence_registry: list[EvidenceItem] = Field(default_factory=list)
+    contradiction_analyses: list[ContradictionAnalysisItem] = Field(default_factory=list)
+    gap_validation_reports: list[GapValidationReport] = Field(default_factory=list)
+    problem_candidates: list[ProblemCandidate] = Field(default_factory=list)
+    methodology_recommendations: list[MethodologyRecommendation] = Field(default_factory=list)
+    experiment_records: list[ExperimentRecord] = Field(default_factory=list)
+    reproducibility_report: ReproducibilityCheckReport | None = None
+    publication_suitability: list[PublicationSuitabilityItem] = Field(default_factory=list)
+    os_assistant_history: list[dict[str, Any]] = Field(default_factory=list)
