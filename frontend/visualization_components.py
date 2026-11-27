@@ -21,22 +21,22 @@ from core.schemas import (
 )
 
 PLOTLY_LAYOUT_BASE = dict(
-    template="plotly_dark",
-    paper_bgcolor="rgba(19, 23, 34, 0.0)",
-    plot_bgcolor="rgba(19, 23, 34, 0.55)",
-    font=dict(family="Inter, sans-serif", color="#E2E8F0", size=12),
+    template="plotly_white",
+    paper_bgcolor="rgba(255, 255, 255, 0.95)",
+    plot_bgcolor="#F8FAFC",
+    font=dict(family="Inter, sans-serif", color="#0F172A", size=12),
     margin=dict(l=35, r=25, t=45, b=35),
 )
 
 
 def render_mermaid_diagram(mermaid_code: str, height: int = 360, title: str = "") -> None:
-    """Render a Mermaid.js diagram inside a dark glass panel with live SVG rendering."""
+    """Render a Mermaid.js diagram inside a clean high-contrast card with live SVG rendering."""
     if not mermaid_code or not mermaid_code.strip():
         st.info("No diagram specification available yet.")
         return
     uid = f"mermaid_{uuid4().hex[:8]}"
     safe_code = html.escape(mermaid_code.strip())
-    header = f'<div style="font-size:0.8rem;color:#A78BFA;font-weight:600;margin-bottom:6px;">{html.escape(title)}</div>' if title else ""
+    header = f'<div style="font-size:0.82rem;color:#5B21B6;font-weight:700;margin-bottom:6px;">{html.escape(title)}</div>' if title else ""
     html_doc = f"""
     <html>
     <head>
@@ -45,9 +45,10 @@ def render_mermaid_diagram(mermaid_code: str, height: int = 360, title: str = ""
         body {{
           margin: 0;
           padding: 12px;
-          background: #111521;
-          color: #F3F5FA;
+          background: #FFFFFF;
+          color: #0F172A;
           font-family: Inter, sans-serif;
+          border: 1px solid #CBD5E1;
           border-radius: 12px;
         }}
         .mermaid {{
@@ -63,14 +64,14 @@ def render_mermaid_diagram(mermaid_code: str, height: int = 360, title: str = ""
       <script>
         mermaid.initialize({{
           startOnLoad: true,
-          theme: 'dark',
+          theme: 'base',
           themeVariables: {{
-            primaryColor: '#2B2250',
-            primaryTextColor: '#F3F5FA',
-            primaryBorderColor: '#8B5CF6',
-            lineColor: '#A78BFA',
-            secondaryColor: '#192236',
-            tertiaryColor: '#131722'
+            primaryColor: '#EDE9FE',
+            primaryTextColor: '#0F172A',
+            primaryBorderColor: '#6D28D9',
+            lineColor: '#6D28D9',
+            secondaryColor: '#E0F2FE',
+            tertiaryColor: '#F8FAFC'
           }}
         }});
       </script>
@@ -103,8 +104,8 @@ def fig_paper_structure_tree(paper: ParsedPaper) -> go.Figure:
             text=texts,
             hovertemplate="<b>%{label}</b><br>%{text}<extra></extra>",
             marker=dict(
-                colorscale=[[0, "#1E1B4B"], [0.5, "#6D28D9"], [1, "#A78BFA"]],
-                line=dict(color="#0B0D12", width=2),
+                colorscale=[[0, "#EDE9FE"], [0.5, "#8B5CF6"], [1, "#5B21B6"]],
+                line=dict(color="#FFFFFF", width=2),
             ),
         )
     )
@@ -306,7 +307,7 @@ def fig_opportunity_radar(opportunity_rows: list[dict[str, Any]]) -> go.Figure:
     fig.add_trace(go.Scatterpolar(r=gap_opp, theta=topics, fill="toself", name="Gap Opportunity", line_color="#8B5CF6"))
     fig.update_layout(
         **PLOTLY_LAYOUT_BASE,
-        polar=dict(bgcolor="rgba(19, 23, 34, 0.7)", radialaxis=dict(visible=True, range=[0, 10])),
+        polar=dict(bgcolor="#F8FAFC", radialaxis=dict(visible=True, range=[0, 10])),
         title="Research Opportunity Radar",
         height=380,
     )
@@ -359,7 +360,7 @@ def _empty_figure(message: str) -> go.Figure:
         x=0.5,
         y=0.5,
         showarrow=False,
-        font=dict(size=13, color="#94A3B8"),
+        font=dict(size=13, color="#475569"),
     )
     fig.update_layout(**PLOTLY_LAYOUT_BASE, xaxis=dict(visible=False), yaxis=dict(visible=False), height=280)
     return fig

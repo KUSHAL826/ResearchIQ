@@ -148,12 +148,12 @@ def analyze_graph_metrics(G: nx.DiGraph) -> dict[str, Any]:
 
 
 def render_pyvis_html(G: nx.DiGraph, search_highlight: str = "", height_px: int = 560) -> str:
-    """Render NetworkX graph to dark-themed interactive PyVis HTML string."""
+    """Render NetworkX graph to high-contrast light-canvas interactive PyVis HTML string."""
     net = Network(
         height=f"{height_px}px",
         width="100%",
-        bgcolor="#0D1017",
-        font_color="#E5E7EB",
+        bgcolor="#F8FAFC",
+        font_color="#0F172A",
         directed=True,
     )
     net.barnes_hut(gravity=-3200, central_gravity=0.35, spring_length=135, spring_strength=0.04)

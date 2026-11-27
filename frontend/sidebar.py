@@ -29,10 +29,10 @@ def render_sidebar(
             """
             <div style="padding:0.4rem 0 0.8rem 0;">
                 <div style="font-size:1.35rem;font-weight:800;letter-spacing:-0.02em;
-                     background:linear-gradient(90deg,#F3F5FA,#A78BFA);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+                     background:linear-gradient(90deg,#0F172A,#6D28D9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
                     RESEARCHIQ
                 </div>
-                <div style="font-size:0.74rem;color:#94A3B8;">Visual Autonomous Research Studio</div>
+                <div style="font-size:0.74rem;color:#475569;font-weight:500;">Visual Autonomous Research Studio</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -58,7 +58,7 @@ def render_sidebar(
         st.divider()
 
         # Multi-project Switcher
-        st.markdown('<div style="font-size:0.74rem;color:#94A3B8;font-weight:600;margin-bottom:4px;">PROJECTS (SESSION ISOLATED)</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.74rem;color:#475569;font-weight:700;margin-bottom:4px;">PROJECTS (SESSION ISOLATED)</div>', unsafe_allow_html=True)
         proj_ids = list(projects.keys())
         selected_pid = st.selectbox(
             "Active Project",
@@ -154,7 +154,7 @@ def render_sidebar(
         st.divider()
 
         # Gemini API Key (session-only, never persisted to DB)
-        st.markdown('<div style="font-size:0.74rem;color:#94A3B8;font-weight:600;margin-bottom:4px;">GEMINI AI ENGINE</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.74rem;color:#475569;font-weight:700;margin-bottom:4px;">GEMINI AI ENGINE</div>', unsafe_allow_html=True)
         api_key_in = st.text_input(
             "Gemini API Key (session-only)",
             type="password",

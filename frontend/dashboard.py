@@ -45,10 +45,10 @@ def render_dashboard(
                 <div style="max-width:740px;">
                     <span class="riq-badge riq-badge-violet">AUTONOMOUS RESEARCH PLATFORM</span>
                     <span class="riq-badge riq-badge-blue">LANGGRAPH + GEMINI + FAISS</span>
-                    <h1 style="margin:0.45rem 0 0.35rem 0;font-size:2.05rem;font-weight:800;letter-spacing:-0.03em;color:#F8FAFC;">
+                    <h1 style="margin:0.45rem 0 0.35rem 0;font-size:2.05rem;font-weight:800;letter-spacing:-0.03em;color:#0F172A;">
                         RESEARCHIQ — Show the Research, Don't Just Describe It.
                     </h1>
-                    <p style="margin:0;color:#CBD5E1;font-size:0.96rem;line-height:1.5;">
+                    <p style="margin:0;color:#1E293B;font-size:0.96rem;line-height:1.5;">
                         Move from an initial research spark to a validated, publication-ready IEEE, Springer, or ACM manuscript
                         through interactive knowledge graphs, PRISMA screening, evidence-grounded gap detection, and real experimental analytics.
                     </p>
@@ -163,7 +163,7 @@ def render_dashboard(
             is_active = stg["id"] == active_project.active_stage
             state_cls = "completed" if is_done else ("active" if is_active else "")
             status_txt = "COMPLETED" if is_done else ("ACTIVE" if is_active else "PENDING")
-            status_color = "#10B981" if is_done else ("#A78BFA" if is_active else "#64748B")
+            status_color = "#059669" if is_done else ("#6D28D9" if is_active else "#475569")
             arrow = " →" if idx < 11 else ""
             with cols[offset]:
                 st.markdown(
@@ -172,7 +172,7 @@ def render_dashboard(
                         <div style="font-size:0.66rem;color:{status_color};font-weight:700;letter-spacing:0.05em;">
                             {idx + 1}. {status_txt}{arrow}
                         </div>
-                        <div style="font-size:0.78rem;font-weight:600;color:#F3F5FA;margin-top:2px;">
+                        <div style="font-size:0.78rem;font-weight:700;color:#0F172A;margin-top:2px;">
                             {html.escape(stg['label'])}
                         </div>
                     </div>
