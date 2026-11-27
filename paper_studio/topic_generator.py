@@ -148,14 +148,23 @@ def generate_problem_statement(
     project: ResearchProject,
     llm_client: GeminiClient | None = None,
 ) -> ProblemStatementData:
-    """Draft structured Problem Statement, Objectives, Scope, Research Questions, and Hypotheses."""
+    """Draft structured Problem Statement, Objectives, Scope, Research Questions, and Hypotheses tailored to the topic."""
+    clean_topic = (topic or project.selected_topic or project.title or project.domain).strip()
     gap_ctx = "\n".join(f"- {g.title}: {g.description} ({g.supporting_publication})" for g in project.research_gaps[:5])
+    matching_idea = next(
+        (t for t in project.topic_ideas if t.title.strip().lower() == clean_topic.lower()),
+        None,
+    )
+    seed_rqs = matching_idea.research_questions if matching_idea else []
+
     if llm_client and llm_client.is_configured:
         prompt = (
-            f"Formulate a complete Stage 2 ProblemStatementData for the selected topic:\n"
-            f"Topic: {topic}\nDomain: {project.domain}\n"
+            f"Formulate a complete Stage 2 ProblemStatementData strictly tailored to this research topic:\n"
+            f"Topic: {clean_topic}\nPrimary Domain: {project.domain}\n"
+            f"Secondary Domains: {', '.join(project.secondary_domains) or 'None'}\n"
+            f"Existing Seed Research Questions: {seed_rqs or 'None'}\n"
             f"Session Gaps:\n{gap_ctx or 'None uploaded yet'}\n"
-            f"Include clear problem_definition, motivation, 3-4 measurable objectives, scope_in, scope_out, "
+            f"Include topic-specific problem_definition, motivation, 3-4 measurable objectives, scope_in, scope_out, "
             f"3 research_questions, and 2 testable hypotheses. Keep approved=False so the student can review and approve."
         )
         try:
@@ -165,37 +174,50 @@ def generate_problem_statement(
         except Exception:
             pass
 
+    domain_ctx = (
+        f"{project.domain} ({', '.join(project.secondary_domains)})"
+        if project.secondary_domains
+        else project.domain
+    )
+    gap_note = (
+        f" Specifically, prior studies highlight: {project.research_gaps[0].title}."
+        if project.research_gaps
+        else ""
+    )
+    rqs = list(seed_rqs) if seed_rqs else [
+        f"RQ1: What algorithmic and environmental constraints degrade baseline performance in {clean_topic}?",
+        f"RQ2: How effectively can a structured {project.domain} model improve accuracy and adaptability for {clean_topic}?",
+        f"RQ3: What latency, reliability, and generalization trade-offs arise during {clean_topic} deployment?",
+    ]
     return ProblemStatementData(
         problem_definition=(
-            f"Current approaches to '{topic}' in {project.domain} exhibit limited cross-dataset generalization, "
-            f"insufficient component-level ablation clarity, and high sensitivity to noisy real-world inputs."
+            f"Existing solutions for '{clean_topic}' within {domain_ctx} struggle with dynamic real-world variability, "
+            f"limited cross-scenario generalization, and insufficient component-level validation.{gap_note} "
+            f"Consequently, there is a need for a reliable, empirically benchmarked framework tailored to {clean_topic}."
         ),
         motivation=(
-            f"Addressing these limitations is essential for trustworthy academic and practical adoption of {project.domain} systems."
+            f"Advancing '{clean_topic}' is critical to achieving safe, accurate, and reproducible performance "
+            f"under realistic {domain_ctx} operating conditions."
         ),
         objectives=[
-            f"O1: Analyze baseline methods and quantify existing limitations in {topic}.",
-            f"O2: Design a modular, reproducible methodology addressing the identified gaps.",
-            f"O3: Conduct controlled experiments and ablation studies on benchmark datasets.",
-            f"O4: Validate statistical performance, runtime efficiency, and failure boundaries.",
+            f"O1: Formulate and benchmark existing baseline approaches for {clean_topic} to quantify failure modes.",
+            f"O2: Design and implement a modular {project.domain} architecture tailored to {clean_topic}.",
+            f"O3: Evaluate the proposed system against baselines using quantitative accuracy, robustness, and efficiency metrics.",
+            f"O4: Conduct ablation studies to isolate the contribution of each module in {clean_topic}.",
         ],
         scope_in=[
-            f"Controlled benchmark evaluation within {project.domain}",
+            f"Controlled experimental evaluation of {clean_topic} within {domain_ctx}",
             "Quantitative comparison against reproducible baselines",
-            "Component ablation and error analysis",
+            "Component ablation and failure-boundary analysis",
         ],
         scope_out=[
-            "Unverified proprietary datasets without reproducible splits",
-            "Hardware-specific kernel optimization outside experimental scope",
+            f"Unverified proprietary deployments outside the {clean_topic} benchmark scope",
+            "Hardware-specific low-level firmware tuning",
         ],
-        research_questions=[
-            f"RQ1: Which methodological bottlenecks limit baseline performance in {topic}?",
-            "RQ2: To what extent does the proposed design improve target evaluation metrics over baselines?",
-            "RQ3: What are the computational and generalization trade-offs across configurations?",
-        ],
+        research_questions=rqs,
         hypotheses=[
-            "H1: Integrating structured domain constraints will yield measurable improvements in primary evaluation metrics.",
-            "H2: Systematic ablation will demonstrate non-redundant contributions from each core module.",
+            f"H1: A structured domain-aware pipeline for {clean_topic} will outperform standard baselines on primary evaluation metrics.",
+            f"H2: Systematic ablation will confirm statistically meaningful gains from the core architectural components in {clean_topic}.",
         ],
         approved=False,
     )

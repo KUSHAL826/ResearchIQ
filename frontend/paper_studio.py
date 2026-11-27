@@ -233,8 +233,10 @@ def _render_live_word_panel(project: ResearchProject, assets_cache: dict[str, by
     with sc1:
         if st.button("Sync All Stages → Word", use_container_width=True, key="rp_sync_all_docx"):
             updated = sync_stage_to_word_doc(project, "all", assets_cache=assets_cache, force=False)
+            _sync_manuscript_editor_keys(project, updated)
             if updated:
                 st.success(f"Updated: {', '.join(updated)}")
+                st.rerun()
             else:
                 st.info("Word doc is already up to date with unlocked sections.")
     with sc2:
@@ -291,6 +293,15 @@ def _render_live_word_panel(project: ResearchProject, assets_cache: dict[str, by
         for row in summary["rows"]:
             mark = "✅" if row["approved"] else ("📝" if row["populated"] else "○")
             st.caption(f"{mark} **{row['section']}** — {row['words']} words")
+
+
+def _sync_manuscript_editor_keys(project: ResearchProject, updated_sections: list[str]) -> None:
+    """Keep live Word inline editor and Stage 10 editor keys synchronized with updated sections."""
+    for sec_name in updated_sections:
+        sec_obj = project.manuscript_sections.get(sec_name)
+        if sec_obj is not None:
+            st.session_state[f"rp_docx_inline_{sec_name}"] = sec_obj.content
+            st.session_state[f"s10_editor_{sec_name}"] = sec_obj.content
 
 
 def _mark_stage_done(project: ResearchProject, stage_id: str) -> None:
@@ -448,11 +459,20 @@ def _stage_2_problem(
     assets_cache: dict[str, bytes],
 ) -> None:
     st.markdown("### Stage 2 — Research Problem Statement")
-    topic = project.selected_topic or project.title
+    topic = project.selected_topic or ("" if project.title == "Untitled Research Project" else project.title) or project.domain
+    st.caption(f"Generating based on active topic: **{topic}**")
     if st.button("Generate Problem Statement & Objectives", type="primary", key="s2_gen_btn"):
-        project.problem_statement = generate_problem_statement(topic, project, llm_client=llm_client)
+        generated_ps = generate_problem_statement(topic, project, llm_client=llm_client)
+        project.problem_statement = generated_ps
         project.unsaved_changes = True
-        sync_stage_to_word_doc(project, "problem", assets_cache=assets_cache)
+        st.session_state["s2_prob_def"] = generated_ps.problem_definition
+        st.session_state["s2_motiv"] = generated_ps.motivation
+        st.session_state["s2_objs"] = "\n".join(generated_ps.objectives)
+        st.session_state["s2_rqs"] = "\n".join(generated_ps.research_questions)
+        st.session_state["s2_hyps"] = "\n".join(generated_ps.hypotheses)
+        updated = sync_stage_to_word_doc(project, "problem", assets_cache=assets_cache)
+        _sync_manuscript_editor_keys(project, updated)
+        st.rerun()
 
     ps = project.problem_statement
     ps.problem_definition = st.text_area("Problem Definition", value=ps.problem_definition, height=110, key="s2_prob_def")
@@ -480,6 +500,7 @@ def _stage_2_problem(
         ps.approved = True
         _mark_stage_done(project, "discovery")
         updated = sync_stage_to_word_doc(project, "problem", assets_cache=assets_cache)
+        _sync_manuscript_editor_keys(project, updated)
         st.success(f"Stage 2 approved & synced to Word Doc ({', '.join(updated) or 'saved'}).")
 
 
@@ -547,9 +568,16 @@ def _stage_5_proposal(
 ) -> None:
     st.markdown("### Stage 5 — Research Proposal & Roadmap")
     if st.button("Generate Research Proposal", type="primary", key="s5_gen_btn"):
-        project.proposal = generate_research_proposal(project, llm_client=llm_client)
+        prop_new = generate_research_proposal(project, llm_client=llm_client)
+        project.proposal = prop_new
         project.unsaved_changes = True
-        sync_stage_to_word_doc(project, "proposal", assets_cache=assets_cache)
+        st.session_state["s5_title"] = prop_new.title or project.selected_topic or project.title
+        st.session_state["s5_bg"] = prop_new.background
+        st.session_state["s5_meth"] = prop_new.methodology_summary
+        st.session_state["s5_scope"] = prop_new.scope
+        updated = sync_stage_to_word_doc(project, "proposal", assets_cache=assets_cache)
+        _sync_manuscript_editor_keys(project, updated)
+        st.rerun()
 
     prop = project.proposal
     prop.title = st.text_input("Proposal Title", value=prop.title or project.selected_topic or project.title, key="s5_title")
@@ -575,12 +603,20 @@ def _stage_6_methodology(
 ) -> None:
     st.markdown("### Stage 6 — Methodology & System Architecture")
     if st.button("Generate Architecture & Diagrams", type="primary", key="s6_gen_btn"):
-        project.methodology = generate_methodology_design(project, llm_client=llm_client)
-        project.saved_diagrams["architecture"] = project.methodology.mermaid_architecture
-        project.saved_diagrams["workflow"] = project.methodology.mermaid_workflow
-        project.saved_diagrams["data_pipeline"] = project.methodology.mermaid_data_pipeline
+        md_new = generate_methodology_design(project, llm_client=llm_client)
+        project.methodology = md_new
+        project.saved_diagrams["architecture"] = md_new.mermaid_architecture
+        project.saved_diagrams["workflow"] = md_new.mermaid_workflow
+        project.saved_diagrams["data_pipeline"] = md_new.mermaid_data_pipeline
         project.unsaved_changes = True
-        sync_stage_to_word_doc(project, "methodology", assets_cache=assets_cache)
+        st.session_state["s6_arch"] = md_new.proposed_architecture
+        st.session_state["s6_math"] = md_new.mathematical_models
+        st.session_state["s6_m_arch"] = md_new.mermaid_architecture
+        st.session_state["s6_m_wf"] = md_new.mermaid_workflow
+        st.session_state["s6_m_pipe"] = md_new.mermaid_data_pipeline
+        updated = sync_stage_to_word_doc(project, "methodology", assets_cache=assets_cache)
+        _sync_manuscript_editor_keys(project, updated)
+        st.rerun()
 
     md = project.methodology
     md.proposed_architecture = st.text_area("Proposed Architecture Narrative", value=md.proposed_architecture, height=100, key="s6_arch")
@@ -618,9 +654,14 @@ def _stage_7_implementation(
     st.markdown("### Stage 7 — Implementation Blueprint & Starter Code")
     st.warning("Generated starter code is a starting point only and requires thorough testing and validation on real data.")
     if st.button("Generate Implementation Plan & Starter Code", type="primary", key="s7_gen_btn"):
-        project.implementation = generate_implementation_plan(project, llm_client=llm_client)
+        imp_new = generate_implementation_plan(project, llm_client=llm_client)
+        project.implementation = imp_new
         project.unsaved_changes = True
-        sync_stage_to_word_doc(project, "implementation", assets_cache=assets_cache)
+        st.session_state["s7_code"] = imp_new.starter_code
+        st.session_state["s7_notes"] = imp_new.documentation_notes
+        updated = sync_stage_to_word_doc(project, "implementation", assets_cache=assets_cache)
+        _sync_manuscript_editor_keys(project, updated)
+        st.rerun()
 
     imp = project.implementation
     if imp.tech_stack:
@@ -653,9 +694,13 @@ def _stage_8_experiments(
 ) -> None:
     st.markdown("### Stage 8 — Experiment Design & Ablation Plan")
     if st.button("Generate Experiment & Ablation Plan", type="primary", key="s8_gen_btn"):
-        project.experiment_design = generate_experiment_design(project, llm_client=llm_client)
+        ed_new = generate_experiment_design(project, llm_client=llm_client)
+        project.experiment_design = ed_new
         project.unsaved_changes = True
-        sync_stage_to_word_doc(project, "experiments", assets_cache=assets_cache)
+        st.session_state["s8_metrics"] = ", ".join(ed_new.evaluation_metrics)
+        updated = sync_stage_to_word_doc(project, "experiments", assets_cache=assets_cache)
+        _sync_manuscript_editor_keys(project, updated)
+        st.rerun()
 
     ed = project.experiment_design
     if ed.baselines:
@@ -786,24 +831,28 @@ def _stage_10_manuscript(
             sec_state.content = draft_manuscript_section(project, sec_name, ev_dicts, llm_client=llm_client, instruction_override=instruction)
             sec_state.last_updated = utc_now_iso()
             project.unsaved_changes = True
+            _sync_manuscript_editor_keys(project, [sec_name])
             rebuild_live_docx(project, assets_cache=assets_cache)
             st.rerun()
     with a2:
         if st.button("Improve Flow", use_container_width=True, key="s10_imp"):
             sec_state.content = improve_or_rewrite_section(sec_name, sec_state.content, "improve", ev_dicts, llm_client=llm_client, custom_note=instruction)
             project.unsaved_changes = True
+            _sync_manuscript_editor_keys(project, [sec_name])
             rebuild_live_docx(project, assets_cache=assets_cache)
             st.rerun()
     with a3:
         if st.button("Rewrite", use_container_width=True, key="s10_rew"):
             sec_state.content = improve_or_rewrite_section(sec_name, sec_state.content, "rewrite", ev_dicts, llm_client=llm_client, custom_note=instruction)
             project.unsaved_changes = True
+            _sync_manuscript_editor_keys(project, [sec_name])
             rebuild_live_docx(project, assets_cache=assets_cache)
             st.rerun()
     with a4:
         if st.button("Add Evidence", use_container_width=True, key="s10_evi"):
             sec_state.content = improve_or_rewrite_section(sec_name, sec_state.content, "add_evidence", ev_dicts, llm_client=llm_client)
             project.unsaved_changes = True
+            _sync_manuscript_editor_keys(project, [sec_name])
             rebuild_live_docx(project, assets_cache=assets_cache)
             st.rerun()
     with a5:

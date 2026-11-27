@@ -320,3 +320,23 @@ def test_workspace_b_title_retain_and_inline_word_edit_ui() -> None:
     assert not at.exception
     assert at.session_state["projects"][at.session_state["active_project_id"]].manuscript_sections["Abstract"].content == "Directly altered live Word abstract."
 
+    # Navigate to Stage 2 (empty initially), then click Generate Problem Statement & Objectives
+    stage2_btn = next(b for b in at.button if b.key == "st_nav_discovery")
+    stage2_btn.click().run()
+    assert not at.exception
+
+    gen_ps_btn = next(b for b in at.button if b.key == "s2_gen_btn")
+    gen_ps_btn.click().run()
+    assert not at.exception
+
+    prob_ta = next(ta for ta in at.text_area if ta.key == "s2_prob_def")
+    motiv_ta = next(ta for ta in at.text_area if ta.key == "s2_motiv")
+    objs_ta = next(ta for ta in at.text_area if ta.key == "s2_objs")
+    rqs_ta = next(ta for ta in at.text_area if ta.key == "s2_rqs")
+    hyps_ta = next(ta for ta in at.text_area if ta.key == "s2_hyps")
+    assert "Edge Intrusion Detection" in prob_ta.value
+    assert "Edge Intrusion Detection" in motiv_ta.value
+    assert "Edge Intrusion Detection" in objs_ta.value
+    assert "Edge Intrusion Detection" in rqs_ta.value
+    assert "Edge Intrusion Detection" in hyps_ta.value
+
