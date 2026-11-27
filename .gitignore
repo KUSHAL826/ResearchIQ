@@ -21,6 +21,7 @@ env/
 *.bib
 tmp/
 temp/
+lib/
 .streamlit/secrets.toml
 
 # IDE
