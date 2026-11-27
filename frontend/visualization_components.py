@@ -216,15 +216,17 @@ def fig_prisma_flow(prisma: PRISMACounts) -> go.Figure:
         f"Excluded Full-Text ({prisma.full_text_excluded})",
         f"Studies Included ({prisma.studies_included})",
         f"Needs Review ({prisma.needs_review})",
+        f"Pending Screening ({prisma.pending_screening})",
     ]
-    sources = [0, 0, 2, 2, 2, 4, 4]
-    targets = [1, 2, 3, 4, 7, 5, 6]
+    sources = [0, 0, 2, 2, 2, 2, 4, 4]
+    targets = [1, 2, 3, 4, 7, 8, 5, 6]
     values = [
         max(0, prisma.duplicates_removed),
         max(0, prisma.records_screened),
         max(0, prisma.records_excluded),
         max(0, prisma.full_text_assessed),
         max(0, prisma.needs_review),
+        max(0, prisma.pending_screening),
         max(0, prisma.full_text_excluded),
         max(0, prisma.studies_included),
     ]
@@ -243,7 +245,7 @@ def fig_prisma_flow(prisma: PRISMACounts) -> go.Figure:
                 thickness=22,
                 line=dict(color="#1E293B", width=1),
                 label=labels,
-                color=["#7C3AED", "#64748B", "#38BDF8", "#F43F5E", "#8B5CF6", "#FB7185", "#10B981", "#F59E0B"],
+                color=["#7C3AED", "#64748B", "#38BDF8", "#F43F5E", "#8B5CF6", "#FB7185", "#10B981", "#F59E0B", "#94A3B8"],
             ),
             link=dict(
                 source=s_nz,
@@ -299,16 +301,16 @@ def fig_opportunity_radar(opportunity_rows: list[dict[str, Any]]) -> go.Figure:
         return _empty_figure("No topic opportunity scores available yet")
     top = opportunity_rows[:6]
     topics = [r["Topic"] for r in top]
-    momentum = [r["Recent Momentum"] for r in top]
-    gap_opp = [r["Gap Opportunity"] for r in top]
+    momentum = [r.get("Recent Momentum (Heuristic)", r.get("Recent Momentum", 0)) for r in top]
+    gap_opp = [r.get("Gap Opportunity (Heuristic)", r.get("Gap Opportunity", 0)) for r in top]
 
     fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=momentum, theta=topics, fill="toself", name="Recent Momentum", line_color="#38BDF8"))
-    fig.add_trace(go.Scatterpolar(r=gap_opp, theta=topics, fill="toself", name="Gap Opportunity", line_color="#8B5CF6"))
+    fig.add_trace(go.Scatterpolar(r=momentum, theta=topics, fill="toself", name="Recent Momentum (Heuristic)", line_color="#38BDF8"))
+    fig.add_trace(go.Scatterpolar(r=gap_opp, theta=topics, fill="toself", name="Gap Opportunity (Heuristic)", line_color="#8B5CF6"))
     fig.update_layout(
         **PLOTLY_LAYOUT_BASE,
         polar=dict(bgcolor="#F8FAFC", radialaxis=dict(visible=True, range=[0, 10])),
-        title="Research Opportunity Radar",
+        title="Heuristic Opportunity Radar (Not a Predictive Forecast)",
         height=380,
     )
     return fig

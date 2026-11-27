@@ -883,9 +883,20 @@ def _stage_11_validation(
     st.markdown("### Stage 11 — Comprehensive Manuscript Validation")
     if st.button("Run Full Validation Suite (Citations + Consistency + References)", type="primary", key="s11_run"):
         extracted = extract_claims_from_manuscript(project.manuscript_sections)
+        refs_sec = project.manuscript_sections.get("References")
+        refs_text = refs_sec.content if refs_sec else ""
         if extracted:
             project.claim_verifications = [
-                verify_claim_against_evidence(clm, marker, sec, vector_store, project.discovered_works, llm_client)
+                verify_claim_against_evidence(
+                    clm,
+                    marker,
+                    sec,
+                    vector_store,
+                    project.discovered_works,
+                    llm_client,
+                    parsed_papers=project.parsed_papers,
+                    references_text=refs_text,
+                )
                 for sec, clm, marker in extracted
             ]
         project.consistency_report = run_consistency_check(project)
@@ -943,6 +954,7 @@ def _stage_12_publication(project: ResearchProject) -> None:
         render_metric_card("Consistency", f"{readiness['consistency_score']}/100", "References OK" if readiness["references_ready"] else "Check Refs")
 
     st.markdown(f"#### {pp.target_format} Author Guideline Checklist")
+    st.info(readiness["compliance_note"])
     st.dataframe(pd.DataFrame(readiness["guidelines"]), use_container_width=True)
 
     st.markdown("#### Export Camera-Ready Manuscript Package")

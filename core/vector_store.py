@@ -1,8 +1,9 @@
-"""Session-scoped temporary FAISS vector store with Gemini Embeddings and transparent fallback."""
+"""Session-scoped temporary FAISS vector store with Gemini Embeddings and safe fallback."""
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
 from typing import Tuple
@@ -13,6 +14,8 @@ import numpy as np
 from core.llm_client import GeminiClient
 from core.schemas import DocumentChunk
 
+logger = logging.getLogger("researchiq.vector_store")
+
 
 class SessionVectorStore:
     """In-memory temporary FAISS index scoped to a single research project."""
@@ -21,18 +24,20 @@ class SessionVectorStore:
         self.project_id = project_id
         self.index: faiss.IndexFlatIP | None = None
         self.chunks: list[DocumentChunk] = []
-        self.embedding_mode: str = "uninitialized"  # "gemini" | "lexical_fallback"
+        self.embedding_mode: str = "uninitialized"  # "gemini" | "lexical_fallback" | "empty"
         self.dimension: int = 0
+        self.last_status_note: str = ""
 
     @staticmethod
     def _normalize(mat: np.ndarray) -> np.ndarray:
+        mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0).astype("float32")
         norms = np.linalg.norm(mat, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         return (mat / norms).astype("float32")
 
     @staticmethod
     def _lexical_embed(texts: list[str], dim: int = 384) -> np.ndarray:
-        """Deterministic feature-hashing vector fallback when Gemini API key is not set."""
+        """Deterministic feature-hashing vector fallback when Gemini embeddings are unavailable."""
         mat = np.zeros((len(texts), dim), dtype="float32")
         for row_idx, text in enumerate(texts):
             tokens = re.findall(r"[a-z0-9]{2,}", text.lower())
@@ -43,7 +48,6 @@ class SessionVectorStore:
                 bucket = int.from_bytes(digest[:4], "little") % dim
                 sign = 1.0 if (digest[4] % 2 == 0) else -1.0
                 mat[row_idx, bucket] += sign
-            # Add character trigrams for partial fuzzy match
             for i in range(max(0, len(text) - 2)):
                 tri = text[i : i + 3].lower()
                 if tri.strip():
@@ -57,12 +61,13 @@ class SessionVectorStore:
         chunks: list[DocumentChunk],
         llm_client: GeminiClient | None = None,
     ) -> Tuple[int, str]:
-        """Build or rebuild the FAISS index from document chunks."""
-        self.chunks = list(chunks)
+        """Build or rebuild the FAISS index from non-empty document chunks."""
+        self.chunks = [c for c in chunks if c.text and c.text.strip()]
         if not self.chunks:
             self.index = None
             self.embedding_mode = "empty"
             self.dimension = 0
+            self.last_status_note = "No indexable text chunks."
             return 0, self.embedding_mode
 
         texts = [f"[{c.section} | p.{c.page_start}-{c.page_end}] {c.text}" for c in self.chunks]
@@ -71,15 +76,22 @@ class SessionVectorStore:
         if llm_client and llm_client.is_configured:
             try:
                 raw_vecs = llm_client.embed_texts(texts)
-                if raw_vecs:
+                if raw_vecs and len(raw_vecs) == len(self.chunks) and len(raw_vecs[0]) > 0:
                     vectors_np = self._normalize(np.array(raw_vecs, dtype="float32"))
                     self.embedding_mode = "gemini"
-            except Exception:
+                    self.last_status_note = "Indexed with Gemini Embeddings."
+                else:
+                    logger.warning("Gemini embed_texts returned unexpected vector shape; falling back to lexical FAISS.")
+            except Exception as exc:
+                self.last_status_note = f"Gemini embedding failed ({type(exc).__name__}); using lexical fallback."
+                logger.warning("Falling back to lexical FAISS index: %s", type(exc).__name__)
                 vectors_np = None
 
         if vectors_np is None:
             vectors_np = self._lexical_embed(texts)
             self.embedding_mode = "lexical_fallback"
+            if not self.last_status_note:
+                self.last_status_note = "Indexed with local lexical vector fallback."
 
         self.dimension = int(vectors_np.shape[1])
         self.index = faiss.IndexFlatIP(self.dimension)
@@ -93,8 +105,8 @@ class SessionVectorStore:
         llm_client: GeminiClient | None = None,
         paper_id_filter: str | None = None,
     ) -> list[tuple[DocumentChunk, float]]:
-        """Semantic similarity search returning chunks with cosine scores."""
-        if not self.index or not self.chunks or not query.strip():
+        """Semantic similarity search returning chunks with cosine scores and optional paper filtering."""
+        if not self.index or not self.chunks or not query or not query.strip():
             return []
 
         q_vec: np.ndarray | None = None
@@ -108,11 +120,10 @@ class SessionVectorStore:
 
         if q_vec is None:
             if self.embedding_mode == "gemini":
-                # Query couldn't use Gemini; fallback keyword overlap scoring over stored chunks
                 return self._keyword_score(query, top_k=top_k, paper_id_filter=paper_id_filter)
             q_vec = self._lexical_embed([query], dim=self.dimension)
 
-        search_k = min(len(self.chunks), top_k * 3 if paper_id_filter else top_k)
+        search_k = min(len(self.chunks), max(top_k * 4, 15) if paper_id_filter else top_k)
         scores, indices = self.index.search(q_vec, search_k)
         results: list[tuple[DocumentChunk, float]] = []
         for idx, score in zip(indices[0], scores[0]):

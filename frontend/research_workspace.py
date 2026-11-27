@@ -549,7 +549,7 @@ def _render_feature_5_systematic_review(project: ResearchProject, llm_client: Ge
     with c3:
         render_metric_card("Full-Text Assessed", prisma.full_text_assessed, f"{prisma.full_text_excluded} excluded full-text")
     with c4:
-        render_metric_card("Studies Included", prisma.studies_included, f"{prisma.needs_review} needs review")
+        render_metric_card("Studies Included", prisma.studies_included, f"{prisma.needs_review} review | {prisma.pending_screening} pending")
 
     tab_prisma, tab_screen, tab_matrix, tab_synth = st.tabs([
         "A. PRISMA Diagram",
@@ -586,8 +586,35 @@ def _render_feature_5_systematic_review(project: ResearchProject, llm_client: Ge
                 st.rerun()
 
         unique_works = [w for w in project.discovered_works if not w.is_duplicate]
-        if not unique_works:
-            st.info("Discover papers in Feature 4 first to screen them here.")
+        if not unique_works and not project.parsed_papers:
+            st.info("Discover papers in Feature 4 or upload PDFs in Feature 1 to screen them here.")
+        if project.parsed_papers:
+            st.markdown("##### Uploaded Research PDFs (Require Explicit Screening)")
+            for pidx, p in enumerate(project.parsed_papers):
+                if p.is_duplicate:
+                    continue
+                with st.container(border=True):
+                    pl, pr = st.columns([2.2, 1.3])
+                    with pl:
+                        st.markdown(f"**{p.title}** ({p.year or 'n.d.'} | Uploaded PDF, {p.num_pages} pp.)")
+                        st.caption(p.hierarchical_summary[:180])
+                    with pr:
+                        statuses = ["unscreened", "included", "excluded", "needs_review"]
+                        p_stat = st.selectbox(
+                            "Decision",
+                            statuses,
+                            index=statuses.index(p.screening_status),
+                            key=f"f5_pdf_stat_{p.paper_id}_{pidx}",
+                        )
+                        p_ft = st.checkbox("Full-text assessed", value=p.full_text_assessed, key=f"f5_pdf_ft_{p.paper_id}_{pidx}")
+                        p_reason = st.text_input("Exclusion reason", value=p.exclusion_reason, key=f"f5_pdf_reas_{p.paper_id}_{pidx}")
+                        if p_stat != p.screening_status or p_ft != p.full_text_assessed or p_reason != p.exclusion_reason:
+                            p.screening_status = p_stat  # type: ignore[assignment]
+                            p.full_text_assessed = p_ft
+                            p.exclusion_reason = p_reason
+                            project.unsaved_changes = True
+                            st.rerun()
+
         for idx, w in enumerate(unique_works[:25]):
             with st.container(border=True):
                 top_l, top_r = st.columns([2.2, 1.3])
@@ -609,6 +636,7 @@ def _render_feature_5_systematic_review(project: ResearchProject, llm_client: Ge
                         w.full_text_assessed = ft
                         w.exclusion_reason = reason
                         project.unsaved_changes = True
+                        st.rerun()
 
     with tab_matrix:
         unique_works = [w for w in project.discovered_works if not w.is_duplicate]
@@ -723,16 +751,19 @@ def _render_feature_7_cross_domain(project: ResearchProject, llm_client: GeminiC
         key="f7_domains",
     )
     if st.button("Analyze Cross-Domain Intersection", type="primary", key="f7_run_btn"):
-        ideas, works, domain_counts, errors = explore_cross_domain(selected_domains, llm_client=llm_client)
+        ideas, works, evidence_breakdown, errors = explore_cross_domain(selected_domains, llm_client=llm_client)
         for err in errors:
             st.warning(err)
         project.cross_domain_ideas = ideas
-        st.session_state["f7_domain_counts"] = domain_counts
+        st.session_state["f7_domain_counts"] = evidence_breakdown
         st.session_state["f7_intersection_works"] = works
         project.unsaved_changes = True
 
-    counts = st.session_state.get("f7_domain_counts") or {}
+    breakdown = st.session_state.get("f7_domain_counts") or {}
+    counts = breakdown.get("counts", breakdown) if isinstance(breakdown, dict) else {}
     if counts:
+        if isinstance(breakdown, dict) and breakdown.get("novelty_status"):
+            st.warning(breakdown["novelty_status"])
         cdf = pd.DataFrame(list(counts.items()), columns=["Scope", "Matching Publications"])
         c1, c2 = st.columns(2)
         with c1:
@@ -758,11 +789,25 @@ def _render_feature_7_cross_domain(project: ResearchProject, llm_client: GeminiC
                     y="Impact",
                     size="Novelty",
                     hover_name="Idea",
-                    title="Cross-Domain Feasibility vs Impact & Novelty",
+                    title="Cross-Domain Feasibility vs Impact",
                     color_discrete_sequence=["#10B981"],
                 )
                 fig_sc.update_layout(**PLOTLY_LAYOUT_BASE, height=340)
                 st.plotly_chart(fig_sc, use_container_width=True)
+
+        if isinstance(breakdown, dict) and ("existing_research" in breakdown or "related_research" in breakdown):
+            e_col, r_col = st.columns(2)
+            with e_col:
+                st.markdown("**1. Existing Intersection Research Found**")
+                for t in breakdown.get("existing_research", []) or ["None matched all selected domains."]:
+                    st.caption(f"• {t}")
+            with r_col:
+                st.markdown("**2. Related Single-Domain Research Found**")
+                for t in breakdown.get("related_research", []) or ["None returned."]:
+                    st.caption(f"• {t}")
+            st.markdown("**3. Potentially Unexplored Intersection Areas**")
+            for t in breakdown.get("potentially_unexplored", []):
+                st.caption(f"• {t}")
 
     for idea in project.cross_domain_ideas:
         with st.container(border=True):
@@ -786,7 +831,13 @@ def _render_feature_8_trends(project: ResearchProject) -> None:
         st.info("Search and retrieve papers in Feature 4 (Paper Discovery) to power real trend analytics.")
         return
 
-    st.caption(f"Data Source: {', '.join(trends['sources']).upper()} | Time Period: {trends['year_range']} | Records: {trends['total_works']}")
+    st.caption(
+        f"Data Source: {', '.join(trends['sources']).upper()} | Time Period: {trends['year_range']} | "
+        f"Total Works: {trends['total_works']} (Dated: {trends['dated_works']}, Missing Year: {trends['missing_year_count']})"
+    )
+    if trends.get("small_sample_warning"):
+        st.warning(trends["small_sample_warning"])
+    st.info(trends["heuristic_disclaimer"])
 
     c1, c2 = st.columns(2)
     with c1:
@@ -837,6 +888,8 @@ def _render_feature_9_citation_verifier(
     cited_src = st.text_input("Cited Source Marker (optional)", placeholder="e.g., [1] or Vaswani et al., 2017", key="f9_cite_src")
 
     b1, b2 = st.columns(2)
+    refs_sec = project.manuscript_sections.get("References")
+    refs_text = refs_sec.content if refs_sec else ""
     with b1:
         if st.button("Verify Single Claim", type="primary", disabled=not custom_claim.strip(), key="f9_verify_one"):
             res = verify_claim_against_evidence(
@@ -846,6 +899,8 @@ def _render_feature_9_citation_verifier(
                 vector_store=vector_store,
                 discovered_works=project.discovered_works,
                 llm_client=llm_client,
+                parsed_papers=project.parsed_papers,
+                references_text=refs_text,
             )
             project.claim_verifications.insert(0, res)
             project.unsaved_changes = True
@@ -863,6 +918,8 @@ def _render_feature_9_citation_verifier(
                         vector_store=vector_store,
                         discovered_works=project.discovered_works,
                         llm_client=llm_client,
+                        parsed_papers=project.parsed_papers,
+                        references_text=refs_text,
                     )
                     for sec, clm, marker in extracted
                 ]
@@ -897,6 +954,7 @@ def _render_feature_9_citation_verifier(
     for clm in project.claim_verifications:
         with st.expander(f"[{clm.support_status}] ({clm.section_name}) {clm.claim_text[:95]}", expanded=False):
             st.markdown(f"**Cited Source:** {clm.cited_source} | **Page Ref:** {clm.page_reference}")
+            st.caption(f"Confidence Indicator: {clm.confidence_score:.2f} ({clm.confidence_label})")
             st.markdown(f"**Reasoning:** {clm.reasoning}")
             if clm.contradiction_note:
                 st.warning(f"Contradiction Alert: {clm.contradiction_note}")

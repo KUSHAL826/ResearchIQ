@@ -76,6 +76,11 @@ class ParsedPaper(BaseModel):
     chunks: list[DocumentChunk] = Field(default_factory=list)
     hierarchical_summary: str = ""
     processing_stages_completed: list[str] = Field(default_factory=list)
+    # Explicit PRISMA screening fields for uploaded PDFs (no auto-inclusion)
+    screening_status: Literal["unscreened", "included", "excluded", "needs_review"] = "unscreened"
+    exclusion_reason: str = ""
+    full_text_assessed: bool = False
+    is_duplicate: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +219,7 @@ class PRISMACounts(BaseModel):
     full_text_excluded: int = 0
     studies_included: int = 0
     needs_review: int = 0
+    pending_screening: int = 0
     exclusion_reasons: dict[str, int] = Field(default_factory=dict)
 
 
@@ -247,6 +253,8 @@ class ClaimVerificationResult(BaseModel):
     page_reference: str = ""
     contradiction_note: str = ""
     reasoning: str = ""
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    confidence_label: str = "Indicator only — not proof"
 
 
 class ConsistencyIssue(BaseModel):
