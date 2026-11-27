@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# Secrets & Environment
+.env
+.env.local
+
+# Temporary files & exports
+*.riq
+*.pdf
+*.docx
+*.tex
+*.bib
+tmp/
+temp/
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
