@@ -7,7 +7,11 @@ import re
 from typing import Any
 
 import docx
-from docx.shared import Pt
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 import requests
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -199,8 +203,327 @@ def export_latex(project: ResearchProject) -> str:
     )
 
 
+ROMAN_NUMERALS = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+
+
+def _set_two_column_section(section, num_cols: int = 2, space_twips: int = 360) -> None:
+    """Configure an OOXML section for multi-column IEEE layout."""
+    sect_pr = section._sectPr
+    cols = sect_pr.find(qn("w:cols"))
+    if cols is None:
+        cols = OxmlElement("w:cols")
+        sect_pr.append(cols)
+    cols.set(qn("w:num"), str(num_cols))
+    cols.set(qn("w:space"), str(space_twips))
+
+
+def _set_cell_border(cell, **kwargs) -> None:
+    """Set explicit borders on a docx table cell (used for clean IEEE top/bottom rules)."""
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_borders = tc_pr.first_child_found_in("w:tcBorders")
+    if tc_borders is None:
+        tc_borders = OxmlElement("w:tcBorders")
+        tc_pr.append(tc_borders)
+    for edge in ("top", "left", "bottom", "right"):
+        edge_data = kwargs.get(edge)
+        if edge_data is not None:
+            tag = f"w:{edge}"
+            element = tc_borders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tc_borders.append(element)
+            for key, val in edge_data.items():
+                attr_name = key if ":" in key else f"w:{key}"
+                element.set(qn(attr_name), str(val))
+
+
+def _remove_table_borders(table) -> None:
+    """Make author layout grid borderless."""
+    tbl_pr = table._tbl.tblPr
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{edge}")
+        el.set(qn("w:val"), "none")
+        borders.append(el)
+    tbl_pr.append(borders)
+
+
+def _add_ieee_run_in(doc: docx.Document, head_label: str, body_text: str) -> None:
+    """Add IEEE-style run-in bold-italic head (e.g., Abstract— / Index Terms—)."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.line_spacing = 1.05
+
+    r_head = p.add_run(f"{head_label}—")
+    r_head.font.name = "Times New Roman"
+    r_head.font.size = Pt(9)
+    r_head.bold = True
+    r_head.italic = True
+
+    r_body = p.add_run(body_text.strip())
+    r_body.font.name = "Times New Roman"
+    r_body.font.size = Pt(9)
+    r_body.bold = True
+
+
+def _add_ieee_results_table(doc: docx.Document, project: ResearchProject) -> None:
+    """Insert a real IEEE-styled TABLE I when verified experimental metrics exist."""
+    er = project.experiment_results
+    headers: list[str] = []
+    rows_data: list[list[str]] = []
+
+    if er.computed_classification_metrics:
+        m = er.computed_classification_metrics
+        headers = ["Evaluation Metric", "Value", "Sample Size"]
+        rows_data = [
+            ["Accuracy", str(m.get("accuracy", "-")), str(m.get("samples", "-"))],
+            ["Precision (Macro)", str(m.get("precision_macro", "-")), str(m.get("samples", "-"))],
+            ["Recall (Macro)", str(m.get("recall_macro", "-")), str(m.get("samples", "-"))],
+            ["F1-Score (Macro)", str(m.get("f1_macro", "-")), str(m.get("samples", "-"))],
+        ]
+    elif er.datasets and er.datasets[0].numeric_summary:
+        ds = er.datasets[0]
+        headers = ["Metric / Column", "Mean", "Std Dev", "Range"]
+        for col, stats in list(ds.numeric_summary.items())[:8]:
+            rows_data.append(
+                [
+                    col,
+                    str(stats.get("mean", "-")),
+                    str(stats.get("std", "-")),
+                    f"{stats.get('min', '-')} – {stats.get('max', '-')}",
+                ]
+            )
+
+    if not headers or not rows_data:
+        return
+
+    cap = doc.add_paragraph()
+    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cap.paragraph_format.space_before = Pt(6)
+    cap.paragraph_format.space_after = Pt(3)
+    rcap = cap.add_run("TABLE I\n")
+    rcap.font.name = "Times New Roman"
+    rcap.font.size = Pt(8)
+    rcap2 = cap.add_run("SUMMARY OF VERIFIED EXPERIMENTAL RESULTS")
+    rcap2.font.name = "Times New Roman"
+    rcap2.font.size = Pt(8)
+
+    table = doc.add_table(rows=len(rows_data) + 1, cols=len(headers))
+    table.alignment = 1
+    _remove_table_borders(table)
+
+    for c_idx, h_txt in enumerate(headers):
+        cell = table.cell(0, c_idx)
+        _set_cell_border(
+            cell,
+            top={"val": "single", "sz": "8", "color": "000000"},
+            bottom={"val": "single", "sz": "6", "color": "000000"},
+        )
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(h_txt)
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(8)
+        run.bold = True
+
+    for r_idx, row_vals in enumerate(rows_data, start=1):
+        is_last = r_idx == len(rows_data)
+        for c_idx, val in enumerate(row_vals):
+            cell = table.cell(r_idx, c_idx)
+            if is_last:
+                _set_cell_border(cell, bottom={"val": "single", "sz": "8", "color": "000000"})
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT if c_idx == 0 else WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(val)
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(8)
+
+
+def _export_ieee_conference_docx(project: ResearchProject) -> bytes:
+    """
+    Draft Microsoft Word (.docx) strictly following IEEEtran conference template
+    (IEEE-conference-template-062824):
+    - Letter page, 0.75" top, 1.0" bottom, 0.625" left/right margins
+    - Full-width centered 24pt title & multi-column author/affiliation block
+    - Continuous 2-column body with 0.25" gutter
+    - Run-in bold-italic Abstract— and Index Terms—
+    - Centered Roman-numeral uppercase section heads (I. INTRODUCTION)
+    - Italic lettered subheadings (A. Subheading)
+    - IEEE-ruled TABLE I for verified experimental metrics
+    - Numbered bracketed 8pt hanging-indent REFERENCES
+    """
+    doc = docx.Document()
+
+    # Section 0: Single-column header for Title & Author Block
+    sec0 = doc.sections[0]
+    sec0.page_width = Inches(8.5)
+    sec0.page_height = Inches(11.0)
+    sec0.top_margin = Inches(0.75)
+    sec0.bottom_margin = Inches(1.0)
+    sec0.left_margin = Inches(0.625)
+    sec0.right_margin = Inches(0.625)
+
+    normal = doc.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal.font.size = Pt(10)
+    normal.font.color.rgb = RGBColor(0, 0, 0)
+
+    title = (project.proposal.title or project.selected_topic or project.title).strip()
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.paragraph_format.space_before = Pt(0)
+    p_title.paragraph_format.space_after = Pt(10)
+    r_title = p_title.add_run(title)
+    r_title.font.name = "Times New Roman"
+    r_title.font.size = Pt(24)
+
+    # Author grid (up to 3 authors per row, matching IEEEtran \IEEEauthorblockN / \IEEEauthorblockA)
+    authors = project.publication_prep.authors or ["1st Given Name Surname"]
+    affil = project.publication_prep.affiliation or "Department / Organization"
+    cols_per_row = min(3, max(1, len(authors)))
+    num_rows = (len(authors) + cols_per_row - 1) // cols_per_row
+    auth_table = doc.add_table(rows=num_rows, cols=cols_per_row)
+    auth_table.alignment = 1
+    _remove_table_borders(auth_table)
+
+    for idx, author_name in enumerate(authors):
+        r_i = idx // cols_per_row
+        c_i = idx % cols_per_row
+        cell = auth_table.cell(r_i, c_i)
+        p_a = cell.paragraphs[0]
+        p_a.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_a.paragraph_format.space_after = Pt(8)
+        rn = p_a.add_run(f"{author_name}\n")
+        rn.font.name = "Times New Roman"
+        rn.font.size = Pt(11)
+        ra = p_a.add_run(f"{affil}\n")
+        ra.font.name = "Times New Roman"
+        ra.font.size = Pt(10)
+        ra.italic = True
+
+    # Section 1: Continuous Two-Column IEEE Body
+    sec_body = doc.add_section(WD_SECTION.CONTINUOUS)
+    sec_body.top_margin = Inches(0.75)
+    sec_body.bottom_margin = Inches(1.0)
+    sec_body.left_margin = Inches(0.625)
+    sec_body.right_margin = Inches(0.625)
+    _set_two_column_section(sec_body, num_cols=2, space_twips=360)
+
+    sections = _collect_sections_preserving_approved(project)
+    sec_dict = dict(sections)
+
+    abstract_body = sec_dict.get("Abstract") or f"This paper investigates {title} in the domain of {project.domain}."
+    _add_ieee_run_in(doc, "Abstract", abstract_body)
+
+    keywords_list = project.publication_prep.keywords or [project.domain.lower(), "research intelligence", "empirical evaluation"]
+    _add_ieee_run_in(doc, "Index Terms", ", ".join(k.lower() for k in keywords_list) + ".")
+
+    roman_idx = 0
+    sub_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    subhead_candidates = {
+        "Motivation", "Problem Statement", "Scope", "Research Objectives", "Research Questions",
+        "Hypotheses", "Research Design", "Proposed Architecture", "Data Flow",
+        "Mathematical Formulation", "Algorithms & Components", "Technology Stack",
+        "Preprocessing Steps", "Module Organization", "Reproducibility Notes",
+        "Baselines", "Evaluation Metrics", "Configurations", "Ablation Plan", "Discussion",
+    }
+
+    for sec_name, content in sections:
+        if sec_name == "Abstract":
+            continue
+
+        if sec_name == "References":
+            p_ref_h = doc.add_paragraph()
+            p_ref_h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_ref_h.paragraph_format.space_before = Pt(10)
+            p_ref_h.paragraph_format.space_after = Pt(4)
+            rr = p_ref_h.add_run("REFERENCES")
+            rr.font.name = "Times New Roman"
+            rr.font.size = Pt(10)
+
+            for line in [ln.strip() for ln in content.splitlines() if ln.strip()]:
+                p_ref = doc.add_paragraph()
+                p_ref.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                p_ref.paragraph_format.left_indent = Inches(0.22)
+                p_ref.paragraph_format.first_line_indent = Inches(-0.22)
+                p_ref.paragraph_format.space_after = Pt(2)
+                r_txt = p_ref.add_run(line)
+                r_txt.font.name = "Times New Roman"
+                r_txt.font.size = Pt(8)
+            continue
+
+        # Numbered Roman-Numeral Centered Section Heading
+        r_num = ROMAN_NUMERALS[roman_idx] if roman_idx < len(ROMAN_NUMERALS) else str(roman_idx + 1)
+        roman_idx += 1
+        p_h = doc.add_paragraph()
+        p_h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_h.paragraph_format.space_before = Pt(10)
+        p_h.paragraph_format.space_after = Pt(4)
+        p_h.paragraph_format.keep_with_next = True
+        rh = p_h.add_run(f"{r_num}. {sec_name.upper()}")
+        rh.font.name = "Times New Roman"
+        rh.font.size = Pt(10)
+
+        sub_idx = 0
+        first_para = True
+        for block in content.split("\n\n"):
+            cleaned = re.sub(r"^#+\s*", "", block.strip())
+            if not cleaned:
+                continue
+
+            lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+            # Detect subheading line followed by body lines
+            if len(lines) >= 2 and (lines[0] in subhead_candidates or (len(lines[0]) < 42 and not lines[0].endswith((".", ":", ",", ";")))):
+                sub_title = lines[0]
+                letter = sub_letters[sub_idx % len(sub_letters)]
+                sub_idx += 1
+                p_sub = doc.add_paragraph()
+                p_sub.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                p_sub.paragraph_format.space_before = Pt(5)
+                p_sub.paragraph_format.space_after = Pt(2)
+                p_sub.paragraph_format.keep_with_next = True
+                rs = p_sub.add_run(f"{letter}. {sub_title}")
+                rs.font.name = "Times New Roman"
+                rs.font.size = Pt(10)
+                rs.italic = True
+                body_lines = lines[1:]
+                first_para = True
+                for bl in body_lines:
+                    _add_ieee_body_paragraph(doc, bl, indent=not first_para and not bl.startswith(("-", "*", "•")))
+                    first_para = False
+            else:
+                for bl in lines:
+                    _add_ieee_body_paragraph(doc, bl, indent=not first_para and not bl.startswith(("-", "*", "•")))
+                    first_para = False
+
+        if sec_name == "Results and Discussion":
+            _add_ieee_results_table(doc, project)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _add_ieee_body_paragraph(doc: docx.Document, text: str, indent: bool = True) -> None:
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after = Pt(3)
+    p.paragraph_format.line_spacing = 1.05
+    if indent:
+        p.paragraph_format.first_line_indent = Inches(0.14)
+    r = p.add_run(text)
+    r.font.name = "Times New Roman"
+    r.font.size = Pt(10)
+
+
 def export_docx_bytes(project: ResearchProject) -> bytes:
-    """Export the manuscript to a formatted Microsoft Word (.docx) binary."""
+    """Export the manuscript to a formatted Microsoft Word (.docx) binary matching the target conference style."""
+    if project.publication_prep.target_format == "IEEE":
+        return _export_ieee_conference_docx(project)
+
     doc = docx.Document()
     title = project.proposal.title or project.selected_topic or project.title
     style = doc.styles["Normal"]

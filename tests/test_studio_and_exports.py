@@ -36,10 +36,21 @@ def test_stage9_real_csv_metrics_and_confusion_matrix() -> None:
 
 
 def test_stage12_exports_preserve_approved_sections() -> None:
+    import io
+    import docx
+
     proj = create_empty_project(title="Export Integrity Study")
     proj.manuscript_sections["Abstract"].content = "Approved experimental abstract content."
     proj.manuscript_sections["Abstract"].approved = True
-    proj.manuscript_sections["Introduction"].content = "Introduction grounded in prior work [1]."
+    proj.manuscript_sections["Introduction"].content = "Motivation\nAddressing dynamic environments.\n\nProblem Statement\nIntroduction grounded in prior work [1]."
+    proj.manuscript_sections["Results and Discussion"].content = "Empirical accuracy improved to 0.92."
+    proj.experiment_results.computed_classification_metrics = {
+        "samples": 100,
+        "accuracy": 0.92,
+        "precision_macro": 0.91,
+        "recall_macro": 0.9,
+        "f1_macro": 0.905,
+    }
     proj.discovered_works.append(
         ScholarlyWork(
             work_id="oa_99",
@@ -63,3 +74,19 @@ def test_stage12_exports_preserve_approved_sections() -> None:
     assert "\\documentclass[conference]{IEEEtran}" in tex
     assert len(docx_bytes) > 1000
     assert pdf_bytes.startswith(b"%PDF")
+
+    # Verify IEEE conference Word template structure: 2-column body, Abstract—, Index Terms—, Roman heads, TABLE I, REFERENCES
+    parsed_doc = docx.Document(io.BytesIO(docx_bytes))
+    assert len(parsed_doc.sections) == 2
+    cols_el = parsed_doc.sections[1]._sectPr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}cols")
+    assert cols_el is not None
+    assert cols_el.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}num") == "2"
+
+    all_text = "\n".join(p.text for p in parsed_doc.paragraphs)
+    assert "Abstract—Approved experimental abstract content." in all_text
+    assert "Index Terms—" in all_text
+    assert "I. INTRODUCTION" in all_text
+    assert "A. Motivation" in all_text
+    assert "TABLE I" in all_text
+    assert "REFERENCES" in all_text
+    assert len(parsed_doc.tables) >= 2  # Author grid + TABLE I
