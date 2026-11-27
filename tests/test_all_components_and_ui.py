@@ -248,3 +248,75 @@ def test_streamlit_ui_all_workspaces_and_modules() -> None:
         btn = next(b for b in at.button if b.key == f"st_nav_{stg['id']}")
         btn.click().run()
         assert not at.exception, f"Paper Studio stage '{stg['id']}' failed: {at.exception}"
+
+
+def test_title_improvement_and_live_docx_sync() -> None:
+    import io
+    import docx
+    from paper_studio.live_docx_builder import rebuild_live_docx, sync_stage_to_word_doc
+    from paper_studio.topic_generator import suggest_improved_titles
+
+    proj = create_empty_project(title="Untitled Research Project", domain="Cybersecurity")
+    try:
+        critique, suggestions = suggest_improved_titles("Phishing Detection", "Cybersecurity")
+        assert critique
+        assert len(suggestions) == 3
+
+        # User retains their own title
+        proj.original_title_input = "Phishing Detection"
+        proj.title = "Phishing Detection"
+        proj.selected_topic = "Phishing Detection"
+        proj.proposal.title = "Phishing Detection"
+        proj.title_confirmed = True
+
+        updated_t = sync_stage_to_word_doc(proj, "title")
+        assert "Abstract" in updated_t
+
+        # Add Problem & Methodology components -> verify live .docx grows and reflects them
+        proj.problem_statement = generate_problem_statement(proj.selected_topic, proj)
+        updated_p = sync_stage_to_word_doc(proj, "problem")
+        assert "Introduction" in updated_p
+        assert "Objectives" in updated_p
+
+        # Lock Introduction so subsequent syncs respect user's approved prose
+        proj.manuscript_sections["Introduction"].content = "Custom locked introduction."
+        proj.manuscript_sections["Introduction"].approved = True
+        sync_stage_to_word_doc(proj, "problem", force=False)
+        assert proj.manuscript_sections["Introduction"].content == "Custom locked introduction."
+
+        docx_bytes = rebuild_live_docx(proj)
+        doc = docx.Document(io.BytesIO(docx_bytes))
+        full_doc_text = "\n".join(p.text for p in doc.paragraphs)
+        assert "Phishing Detection" in full_doc_text
+        assert "Custom locked introduction." in full_doc_text
+    finally:
+        cleanup_project_temp_dir(proj.project_id)
+
+
+def test_workspace_b_title_retain_and_inline_word_edit_ui() -> None:
+    app_path = Path(__file__).resolve().parent.parent / "app.py"
+    at = AppTest.from_file(str(app_path), default_timeout=25).run()
+    at.radio[0].set_value("Workspace B — Paper Studio").run()
+    assert not at.exception
+
+    # Enter user's own title and evaluate improvements
+    title_in = next(ti for ti in at.text_input if ti.key == "s1_user_title_input")
+    title_in.set_value("Edge Intrusion Detection").run()
+    eval_btn = next(b for b in at.button if b.key == "s1_eval_title_btn")
+    eval_btn.click().run()
+    assert not at.exception
+
+    # Retain own title (first radio option) and confirm
+    choice_radio = next(r for r in at.radio if r.key == "s1_title_choice_radio")
+    assert choice_radio.options[0].startswith("Keep my own title:")
+    choice_radio.set_value(choice_radio.options[0]).run()
+    confirm_btn = next(b for b in at.button if b.key == "s1_confirm_title_btn")
+    confirm_btn.click().run()
+    assert not at.exception
+
+    # Alter Abstract directly inside Right Panel Live Word Doc editor
+    inline_ed = next(ta for ta in at.text_area if ta.key == "rp_docx_inline_Abstract")
+    inline_ed.set_value("Directly altered live Word abstract.").run()
+    assert not at.exception
+    assert at.session_state["projects"][at.session_state["active_project_id"]].manuscript_sections["Abstract"].content == "Directly altered live Word abstract."
+

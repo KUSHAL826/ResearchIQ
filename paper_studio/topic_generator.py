@@ -15,6 +15,65 @@ class TopicListPayload(BaseModel):
     topics: List[TopicIdea] = Field(default_factory=list)
 
 
+class TitleImprovementPayload(BaseModel):
+    critique: str = ""
+    needs_improvement: bool = True
+    improved_titles: List[str] = Field(default_factory=list)
+
+
+def suggest_improved_titles(
+    user_title: str,
+    domain: str,
+    secondary_domains: list[str] | None = None,
+    llm_client: GeminiClient | None = None,
+) -> tuple[str, list[str]]:
+    """Evaluate a student's proposed paper title and suggest refined academic alternatives."""
+    clean_title = user_title.strip()
+    if not clean_title:
+        return "Enter a working title first to evaluate specificity and academic framing.", []
+
+    domains_str = ", ".join([domain] + [d for d in (secondary_domains or []) if d])
+    if llm_client and llm_client.is_configured:
+        prompt = (
+            f"Evaluate this student's proposed research paper title in the domain '{domains_str}':\n"
+            f"Proposed Title: \"{clean_title}\"\n\n"
+            f"Provide:\n"
+            f"1) critique: 1-2 crisp sentences evaluating clarity, technical specificity, and academic suitability.\n"
+            f"2) needs_improvement: boolean indicating if refinement would strengthen the title.\n"
+            f"3) improved_titles: exactly 3 distinct, publication-grade academic title improvements preserving the user's core topic."
+        )
+        try:
+            payload = llm_client.generate_structured(
+                prompt,
+                TitleImprovementPayload,
+                system_instruction=SYSTEM_RESEARCH_ARCHITECT,
+            )
+            suggestions = [t.strip() for t in payload.improved_titles if t.strip() and t.strip().lower() != clean_title.lower()]
+            if suggestions:
+                return payload.critique or "Evaluated title clarity and academic specificity.", suggestions[:3]
+        except Exception:
+            pass
+
+    # Deterministic academic refinement when offline
+    words = clean_title.split()
+    if len(words) < 5:
+        critique = (
+            f"'{clean_title}' is concise ({len(words)} words) and works as a broad topic, "
+            f"but adding method, evaluation focus, or domain scope makes it stronger for {domain} venues."
+        )
+    else:
+        critique = (
+            f"'{clean_title}' captures your core direction well. Below are sharper academic phrasings "
+            f"highlighting methodology and empirical validation—or you may retain your original title."
+        )
+    suggestions = [
+        f"{clean_title}: A Systematic Framework and Empirical Evaluation in {domain}",
+        f"Evidence-Guided {clean_title} for Reliable {domain} Applications",
+        f"Design and Quantitative Benchmarking of {clean_title}",
+    ]
+    return critique, suggestions
+
+
 def generate_research_topics(
     domain: str,
     secondary_domains: list[str],

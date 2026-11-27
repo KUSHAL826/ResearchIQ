@@ -427,6 +427,10 @@ class ResearchProject(BaseModel):
     consistency_report: ConsistencyReport | None = None
 
     # Studio stage artifacts
+    original_title_input: str = ""
+    title_critique: str = ""
+    improved_title_suggestions: list[str] = Field(default_factory=list)
+    title_confirmed: bool = False
     topic_ideas: list[TopicIdea] = Field(default_factory=list)
     selected_topic: str = ""
     problem_statement: ProblemStatementData = Field(default_factory=ProblemStatementData)
