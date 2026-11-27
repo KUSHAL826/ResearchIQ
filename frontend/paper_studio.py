@@ -9,7 +9,7 @@ import streamlit as st
 from agents.paper_writer import build_reference_list, draft_manuscript_section, improve_or_rewrite_section
 from core.config import MANUSCRIPT_SECTIONS, WORKFLOW_STAGES
 from core.llm_client import GeminiClient, get_llm_client
-from core.project_manager import export_project_to_riq_bytes, sanitize_filename
+from core.project_manager import export_project_to_riq_bytes, mark_project_exported, sanitize_filename
 from core.schemas import ManuscriptSectionState, ResearchProject, utc_now_iso
 from core.vector_store import SessionVectorStore
 from frontend.components import (
@@ -90,13 +90,15 @@ def render_paper_studio(
             key="studio_dl_live_docx_top",
         )
     with top_r:
-        riq_data = export_project_to_riq_bytes(project, asset_bytes_map=assets_cache)
+        riq_data = export_project_to_riq_bytes(project, asset_bytes_map=assets_cache, mark_exported=False)
         st.download_button(
             "Save Project (.riq)",
             data=riq_data,
             file_name=f"{sanitize_filename(project.title)}.riq",
             mime="application/zip",
             use_container_width=True,
+            on_click=mark_project_exported,
+            args=(project,),
             key="studio_save_riq_top",
         )
 
@@ -398,6 +400,7 @@ def _stage_1_idea(
                 project.title_confirmed = True
                 _mark_stage_done(project, "idea")
                 updated = sync_stage_to_word_doc(project, "title", assets_cache=assets_cache)
+                _sync_manuscript_editor_keys(project, updated)
                 st.success(
                     f"Title locked: '{chosen_title}'. Word document initialized"
                     + (f" (updated: {', '.join(updated)})." if updated else ".")
@@ -449,7 +452,8 @@ def _stage_1_idea(
                         project.proposal.title = t.title
                         project.title_confirmed = True
                         _mark_stage_done(project, "idea")
-                        sync_stage_to_word_doc(project, "title", assets_cache=assets_cache)
+                        updated_t = sync_stage_to_word_doc(project, "title", assets_cache=assets_cache)
+                        _sync_manuscript_editor_keys(project, updated_t)
                         st.rerun()
 
 
@@ -738,7 +742,8 @@ def _stage_9_results(project: ResearchProject, assets_cache: dict[str, bytes]) -
             assets_cache[ds_info.asset_relpath] = raw
             project.experiment_results.datasets.append(ds_info)
             project.unsaved_changes = True
-            sync_stage_to_word_doc(project, "results", assets_cache=assets_cache)
+            updated_ds = sync_stage_to_word_doc(project, "results", assets_cache=assets_cache)
+            _sync_manuscript_editor_keys(project, updated_ds)
             st.success(f"Loaded '{ds_info.filename}' ({ds_info.row_count} rows) and synced to Word Doc.")
         except Exception as exc:
             st.error(f"Dataset error: {exc}")
@@ -781,7 +786,8 @@ def _stage_9_results(project: ResearchProject, assets_cache: dict[str, bytes]) -
                 er.confusion_matrix = res_cm["confusion_matrix"]
                 er.confusion_labels = res_cm["labels"]
                 project.unsaved_changes = True
-                sync_stage_to_word_doc(project, "results", assets_cache=assets_cache)
+                updated_cm = sync_stage_to_word_doc(project, "results", assets_cache=assets_cache)
+                _sync_manuscript_editor_keys(project, updated_cm)
             except Exception as exc:
                 st.error(str(exc))
 

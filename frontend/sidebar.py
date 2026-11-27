@@ -10,6 +10,7 @@ from core.project_manager import (
     cleanup_project_temp_dir,
     create_empty_project,
     export_project_to_riq_bytes,
+    mark_project_exported,
     sanitize_filename,
     validate_and_import_riq_bytes,
 )
@@ -84,6 +85,7 @@ def render_sidebar(
             riq_bytes = export_project_to_riq_bytes(
                 active_project,
                 asset_bytes_map=assets_cache.get(active_project.project_id, {}),
+                mark_exported=False,
             )
             st.download_button(
                 "Save .riq",
@@ -91,6 +93,8 @@ def render_sidebar(
                 file_name=f"{sanitize_filename(active_project.title)}.riq",
                 mime="application/zip",
                 use_container_width=True,
+                on_click=mark_project_exported,
+                args=(active_project,),
                 key="sb_save_riq",
             )
 

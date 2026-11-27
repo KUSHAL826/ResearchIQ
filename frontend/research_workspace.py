@@ -40,7 +40,7 @@ from research.citation_verifier import extract_claims_from_manuscript, verify_cl
 from research.consistency_checker import run_consistency_check
 from research.cross_domain import COMMON_DOMAINS, explore_cross_domain
 from research.multi_paper import compare_papers
-from research.paper_discovery import discover_papers
+from research.paper_discovery import deduplicate_works, discover_papers
 from research.research_gap import build_evidence_to_gap_graph
 from research.systematic_review import (
     apply_rule_based_screening,
@@ -497,6 +497,7 @@ def _render_feature_4_discovery(
             existing_ids = {w.work_id for w in project.discovered_works}
             new_works = [w for w in works if w.work_id not in existing_ids]
             project.discovered_works.extend(new_works)
+            deduplicate_works(project.discovered_works)
             if query and query not in project.trend_queries:
                 project.trend_queries.append(query)
             project.unsaved_changes = True
@@ -669,6 +670,23 @@ def _render_feature_5_systematic_review(project: ResearchProject, llm_client: Ge
             for w in unique_works
             if w.screening_status in status_filter
         ]
+        for p in project.parsed_papers:
+            if not p.is_duplicate and p.screening_status in status_filter:
+                pa = project.paper_analyses.get(p.paper_id)
+                rows.append(
+                    {
+                        "Author": ", ".join(p.authors[:2]) or "Uploaded PDF",
+                        "Year": p.year or "N/A",
+                        "Title": p.title[:48],
+                        "Status": p.screening_status,
+                        "Problem": (pa.problem_statement[:120] if pa else p.hierarchical_summary[:120]) or "-",
+                        "Methodology": (" -> ".join(pa.methodology_steps[:3]) if pa else "-"),
+                        "Dataset": (", ".join(d.name for d in pa.datasets) if pa and pa.datasets else "-"),
+                        "Results": ("; ".join(f"{r.metric}: {r.raw_value or r.value}" for r in pa.results[:3]) if pa and pa.results else "-"),
+                        "Limitations": ("; ".join(l.description[:80] for l in pa.limitations[:2]) if pa and pa.limitations else "-"),
+                        "Contribution": ("; ".join(pa.key_contributions[:2]) if pa and pa.key_contributions else "-"),
+                    }
+                )
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
     with tab_synth:

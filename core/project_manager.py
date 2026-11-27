@@ -119,9 +119,18 @@ def session_autosave_backup(
     return True, current_digest, ts
 
 
+def mark_project_exported(project: ResearchProject) -> None:
+    """Update export metadata only when the user actually triggers a .riq download."""
+    export_time = utc_now_iso()
+    project.last_exported_at = export_time
+    project.unsaved_changes = False
+    project.updated_at = export_time
+
+
 def export_project_to_riq_bytes(
     project: ResearchProject,
     asset_bytes_map: dict[str, bytes] | None = None,
+    mark_exported: bool = True,
 ) -> bytes:
     """
     Package the entire ResearchProject and its uploaded PDFs, datasets, and diagrams
@@ -129,9 +138,10 @@ def export_project_to_riq_bytes(
     """
     project = ensure_project_sections(project)
     export_time = utc_now_iso()
-    project.last_exported_at = export_time
-    project.unsaved_changes = False
-    project.updated_at = export_time
+    if mark_exported:
+        project.last_exported_at = export_time
+        project.unsaved_changes = False
+        project.updated_at = export_time
 
     temp_dir = get_project_temp_dir(project.project_id)
     assets_to_write: dict[str, bytes] = {}
